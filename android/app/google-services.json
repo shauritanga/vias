@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "529124355778",
+    "project_id": "vias-dit-app",
+    "storage_bucket": "vias-dit-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:529124355778:android:77de1fdbb898646561155b",
+        "android_client_info": {
+          "package_name": "com.example.vias"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAiRmTbigBhVzDItfQun_EnytXpUUcackk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

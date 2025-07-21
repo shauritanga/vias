@@ -1,0 +1,22 @@
+{
+  "name": "vias-vercel-backend",
+  "version": "1.0.0",
+  "description": "Vercel backend for VIAS app - PDF processing and Q&A",
+  "main": "index.js",
+  "scripts": {
+    "dev": "vercel dev",
+    "build": "echo 'No build step required'",
+    "deploy": "vercel --prod"
+  },
+  "dependencies": {
+    "form-data": "^4.0.4",
+    "formidable": "^3.5.1",
+    "pdf-parse": "^1.1.1"
+  },
+  "devDependencies": {
+    "@vercel/node": "^3.0.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
