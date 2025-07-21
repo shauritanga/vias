@@ -18,13 +18,27 @@ const port = process.env.PORT || 10000; // Use Render's port or fallback
 const HUGGING_FACE_API_KEY = process.env.HUGGING_FACE_API_KEY;
 const HF_API_URL = 'https://api-inference.huggingface.co/models';
 
+// Debug: Log environment variable status
+console.log('🔍 Environment check:');
+console.log('- NODE_ENV:', process.env.NODE_ENV);
+console.log('- HUGGING_FACE_API_KEY exists:', !!HUGGING_FACE_API_KEY);
+console.log('- HUGGING_FACE_API_KEY starts with hf_:', HUGGING_FACE_API_KEY?.startsWith('hf_'));
+
 // Validate Hugging Face API key
 if (!HUGGING_FACE_API_KEY || HUGGING_FACE_API_KEY.trim() === '') {
-  console.error('❌ ERROR: HUGGING_FACE_API_KEY not found in .env file');
-  console.error('Please add your Hugging Face API key to local-server/.env');
+  console.error('❌ ERROR: HUGGING_FACE_API_KEY not found in environment variables');
+  console.error('Please add your Hugging Face API key to Render environment variables');
   console.error('Get your free API key from: https://huggingface.co/settings/tokens');
   process.exit(1);
 }
+
+if (!HUGGING_FACE_API_KEY.startsWith('hf_')) {
+  console.error('❌ ERROR: Invalid Hugging Face API key format');
+  console.error('API key should start with "hf_"');
+  process.exit(1);
+}
+
+console.log('✅ Hugging Face API key loaded successfully');
 
 console.log('🤗 AI Provider: HUGGING FACE (FREE)');
 console.log('✅ Hugging Face API key loaded successfully');
@@ -558,6 +572,9 @@ function calculateRelevanceScore(chunk) {
 // Hugging Face API Functions
 async function callHuggingFaceAPI(model, inputs, parameters = {}) {
   try {
+    console.log(`🤗 Calling Hugging Face API: ${model}`);
+    console.log(`🔑 Using API key: ${HUGGING_FACE_API_KEY.substring(0, 10)}...`);
+
     const response = await axios.post(
       `${HF_API_URL}/${model}`,
       {
@@ -573,9 +590,19 @@ async function callHuggingFaceAPI(model, inputs, parameters = {}) {
       }
     );
 
+    console.log(`✅ Hugging Face API success: ${response.status}`);
     return response.data;
   } catch (error) {
-    console.error('❌ Hugging Face API error:', error.message);
+    console.error('❌ Hugging Face API error details:');
+    console.error('- Status:', error.response?.status);
+    console.error('- Status Text:', error.response?.statusText);
+    console.error('- Response Data:', error.response?.data);
+    console.error('- Message:', error.message);
+
+    if (error.response?.status === 401) {
+      console.error('🔑 Authentication failed - check your Hugging Face API key');
+    }
+
     throw error;
   }
 }
@@ -1296,6 +1323,13 @@ app.post('/api/language', (req, res) => {
     oldLanguage: oldLanguage,
     newLanguage: currentLanguage
   });
+});
+
+// Log command usage for tracking
+app.post('/api/log-command', (req, res) => {
+  const { command, timestamp } = req.body;
+  console.log(`📊 Command logged: ${command} at ${timestamp}`);
+  res.json({ success: true, message: 'Command logged' });
 });
 
 // Process PDF - Handle both multipart uploads and JSON with base64

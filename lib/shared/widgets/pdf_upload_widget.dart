@@ -74,12 +74,51 @@ class _PDFUploadWidgetState extends State<PDFUploadWidget> {
 
       setState(() {
         _status =
-            'Processing PDF: ${file.name} (${(file.size / 1024 / 1024).toStringAsFixed(1)} MB)';
+            'Uploading to server: ${file.name} (${(file.size / 1024 / 1024).toStringAsFixed(1)} MB)';
         _progress = 0.3;
         _isProcessing = true;
       });
 
-      if (kDebugMode) print('🤖 Starting AI processing with OpenAI...');
+      if (kDebugMode) {
+        print('🤖 Starting AI processing with Hugging Face (free service)...');
+      }
+
+      // Wake up the server first (Render cold start fix)
+      try {
+        setState(() {
+          _status = 'Waking up server (this may take 30-60 seconds)...';
+          _progress = 0.4;
+        });
+
+        await QnAService.healthCheck(); // Wake up the server
+
+        setState(() {
+          _status = 'Server ready, processing PDF...';
+          _progress = 0.5;
+        });
+      } catch (e) {
+        if (kDebugMode) print('⚠️ Health check failed, continuing anyway: $e');
+      }
+
+      // Update status during processing
+      Future.delayed(const Duration(seconds: 10), () {
+        if (_isProcessing) {
+          setState(() {
+            _status =
+                'Server is processing PDF with AI (this may take 1-2 minutes)...';
+            _progress = 0.6;
+          });
+        }
+      });
+
+      Future.delayed(const Duration(seconds: 30), () {
+        if (_isProcessing) {
+          setState(() {
+            _status = 'Still processing... Render server may be starting up...';
+            _progress = 0.8;
+          });
+        }
+      });
 
       // Process the PDF
       final processingResult = await _contentService.processPDFContent(

@@ -33,15 +33,16 @@ class ContentManagementService {
 
   bool get isOffline => _offlineMode;
 
-  /// Process PDF using OpenAI-powered local server
+  /// Process PDF using Hugging Face AI-powered server
   Future<ProcessingResult> processPDFContent(
     dynamic pdfData,
     String fileName,
   ) async {
     try {
-      if (kDebugMode) print('🤖 Processing PDF with OpenAI: $fileName');
+      if (kDebugMode)
+        print('🤖 Processing PDF with Hugging Face AI: $fileName');
 
-      // Use the backend service to process PDF with OpenAI
+      // Use the backend service to process PDF with Hugging Face AI
       final backendService = VercelBackendService();
       Map<String, dynamic> result;
 
@@ -65,9 +66,9 @@ class ContentManagementService {
       }
 
       if (kDebugMode) {
-        print('✅ PDF processed successfully with OpenAI');
+        print('✅ PDF processed successfully with Hugging Face AI');
         print('📄 Total chunks: ${chunks.length}');
-        print('🤖 AI embeddings will be created for intelligent search');
+        print('🤖 AI processing completed for intelligent search');
       }
 
       // Store chunks in Firestore for the Q&A system
@@ -82,15 +83,15 @@ class ContentManagementService {
         message:
             'PDF processed successfully with AI integration. ${chunks.length} content chunks created.',
         extractedText: chunks.map((c) => c['text'] ?? '').join('\n\n'),
-        parseResult: null, // Not used with OpenAI approach
-        structuredData: null, // Not used with OpenAI approach
+        parseResult: null, // Not used with Hugging Face AI approach
+        structuredData: null, // Not used with Hugging Face AI approach
         aiProcessed: true,
         totalChunks: chunks.length,
       );
 
       return processingResult;
     } catch (e) {
-      if (kDebugMode) print('❌ Error processing PDF with OpenAI: $e');
+      if (kDebugMode) print('❌ Error processing PDF with Hugging Face AI: $e');
       return ProcessingResult(
         success: false,
         message: 'Failed to process PDF: $e',
@@ -552,7 +553,7 @@ class QnAService {
       // Get all approved content chunks from Firestore
       final contentChunks = await _getAllContentChunks();
 
-      // Use the OpenAI-powered backend Q&A service
+      // Use the Hugging Face AI-powered backend Q&A service
       final response = await _backendService.answerQuestion(
         question,
         contentChunks: contentChunks,
@@ -605,6 +606,26 @@ class QnAService {
     } catch (e) {
       if (kDebugMode) print('❌ Get language error: $e');
       return 'english'; // Default fallback
+    }
+  }
+
+  /// Health check to wake up server
+  static Future<bool> healthCheck() async {
+    try {
+      return await _backendService.healthCheck();
+    } catch (e) {
+      if (kDebugMode) print('❌ Health check error: $e');
+      return false;
+    }
+  }
+
+  /// Log command usage to backend for tracking
+  static Future<void> logCommand(String command) async {
+    try {
+      await _backendService.logCommand(command);
+    } catch (e) {
+      if (kDebugMode) print('❌ Log command error: $e');
+      // Don't throw - logging is not critical
     }
   }
 

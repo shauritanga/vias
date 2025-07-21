@@ -16,16 +16,12 @@ class VercelBackendService {
   // 3. Railway (FREE - $5 credit monthly): 'https://your-app.railway.app'
   // 4. Local development: 'http://localhost:3001'
 
-  // Backend URL configuration for different platforms
-  static const String baseUrl = kIsWeb
-      ? 'http://localhost:10000' // Web can access localhost for development
-      : 'https://your-app-name.onrender.com'; // Replace with your Render URL
+  // Backend URL configuration - ALWAYS use Render
+  static const String baseUrl = 'https://vias.onrender.com';
 
   // Fallback URLs for network issues
   static const List<String> fallbackUrls = [
-    'https://your-app-name.onrender.com', // Primary cloud URL
-    'http://10.0.2.2:10000', // Local development on emulator
-    'http://localhost:10000', // Local development
+    'https://vias.onrender.com', // Primary Render URL
   ];
 
   /// Try multiple URLs to handle Android emulator network issues
@@ -190,30 +186,66 @@ class VercelBackendService {
     }
   }
 
-  /// Convert PDF bytes to base64 for Netlify functions
+  /// Process PDF bytes with Render backend
   Future<Map<String, dynamic>> processPDFBytes(
     List<int> pdfBytes,
     String filename,
   ) async {
     try {
+      if (kDebugMode) {
+        print('🔧 DEBUG: Current baseUrl = $baseUrl');
+        print(
+          '📤 Uploading PDF to Render: $filename (${pdfBytes.length} bytes)',
+        );
+        print('🌐 Full URL will be: $baseUrl/api/process-pdf');
+      }
+
       final base64Data = base64Encode(pdfBytes);
 
-      final uri = Uri.parse('$baseUrl/api/process-pdf');
-      final response = await http.post(
-        uri,
-        headers: {'Content-Type': 'application/json'},
-        body: json.encode({'pdfData': base64Data, 'filename': filename}),
-      );
+      // Direct HTTP call to ensure correct URL usage
+      final fullUrl = '$baseUrl/api/process-pdf';
+      if (kDebugMode) print('🚀 Making direct request to: $fullUrl');
+
+      final uri = Uri.parse(fullUrl);
+      final response = await http
+          .post(
+            uri,
+            headers: {'Content-Type': 'application/json'},
+            body: json.encode({'pdfData': base64Data, 'filename': filename}),
+          )
+          .timeout(
+            const Duration(seconds: 120),
+          ); // Increased for Render cold starts
+
+      if (kDebugMode) {
+        print('📥 PDF upload response status: ${response.statusCode}');
+      }
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         if (kDebugMode) {
-          print('✅ PDF bytes processed successfully: ${data['message']}');
+          print('✅ PDF processed successfully on Render');
+          print('📊 Response: ${data['message'] ?? 'Success'}');
+          print('📄 Chunks created: ${data['totalChunks'] ?? 'Unknown'}');
         }
         return data;
       } else {
-        final error = json.decode(response.body);
-        throw Exception('PDF processing failed: ${error['error']}');
+        final errorBody = response.body;
+        if (kDebugMode) {
+          print('❌ PDF upload failed with status: ${response.statusCode}');
+          print('❌ Error response: $errorBody');
+        }
+
+        try {
+          final error = json.decode(errorBody);
+          throw Exception(
+            'PDF processing failed: ${error['error'] ?? 'Unknown error'}',
+          );
+        } catch (jsonError) {
+          throw Exception(
+            'PDF processing failed: HTTP ${response.statusCode} - $errorBody',
+          );
+        }
       }
     } catch (e) {
       if (kDebugMode) print('❌ PDF bytes processing error: $e');
@@ -369,6 +401,48 @@ class VercelBackendService {
     } catch (e) {
       if (kDebugMode) print('❌ Get language error: $e');
       rethrow;
+    }
+  }
+
+  /// Health check to wake up Render server
+  Future<bool> healthCheck() async {
+    try {
+      if (kDebugMode) print('🏥 Performing health check to wake up server...');
+
+      final uri = Uri.parse(baseUrl);
+      final response = await http.get(uri).timeout(const Duration(seconds: 60));
+
+      if (kDebugMode) {
+        print('📥 Health check response: ${response.statusCode}');
+      }
+
+      return response.statusCode == 200;
+    } catch (e) {
+      if (kDebugMode) print('❌ Health check failed: $e');
+      return false;
+    }
+  }
+
+  /// Log command usage for tracking
+  Future<void> logCommand(String command) async {
+    try {
+      if (kDebugMode) print('📊 Logging command: $command');
+
+      final body = {
+        'command': command,
+        'timestamp': DateTime.now().toIso8601String(),
+      };
+
+      final response = await _makeRequestWithFallback('/api/log-command', {
+        'Content-Type': 'application/json',
+      }, json.encode(body));
+
+      if (kDebugMode) {
+        print('📥 Log command response: ${response.statusCode}');
+      }
+    } catch (e) {
+      if (kDebugMode) print('❌ Log command failed: $e');
+      // Don't throw - logging is not critical
     }
   }
 }

@@ -27,6 +27,7 @@ class _VoiceFirstHomeState extends State<VoiceFirstHome>
   bool _isListening = false;
   bool _isProcessing = false;
   bool _isInQAMode = false;
+  bool _isListeningEnabled = true; // Can be toggled by voice commands
   String _lastResponse = '';
 
   // Animation Controllers
@@ -71,8 +72,11 @@ class _VoiceFirstHomeState extends State<VoiceFirstHome>
 
     _updateStatus('Welcome to VIAS');
 
-    // Use language-aware welcome message
-    final welcomeMessage = _languageProvider.getWelcomeMessage();
+    // Enhanced welcome message with voice control instructions
+    final welcomeMessage = _languageProvider.isSwahili
+        ? 'Karibu VIAS, msaidizi wako wa sauti wa Chuo Kikuu cha DIT. Sema "Msaada" kupata amri, au "Acha kusikiliza" kunizima. Sema "Amka" kuniamsha tena.'
+        : 'Welcome to VIAS, your voice assistant for DIT University. Say "Help" for commands, or "Stop listening" to disable me. Say "Wake up" to enable me again.';
+
     await _ttsService.speak(welcomeMessage);
 
     await Future.delayed(const Duration(milliseconds: 1000));
@@ -88,7 +92,7 @@ class _VoiceFirstHomeState extends State<VoiceFirstHome>
   }
 
   Future<void> _startListening() async {
-    if (!mounted) return;
+    if (!mounted || !_isListeningEnabled) return;
 
     setState(() {
       _isListening = true;
@@ -96,7 +100,14 @@ class _VoiceFirstHomeState extends State<VoiceFirstHome>
     });
 
     _pulseController.repeat(reverse: true);
-    _updateStatus('Listening...');
+    _updateStatus(_isListeningEnabled ? 'Listening...' : 'Voice disabled');
+
+    // Audio feedback for visually impaired users
+    final listeningMessage = _languageProvider.isSwahili
+        ? 'Ninakusikiliza'
+        : 'Listening';
+
+    await _ttsService.speak(listeningMessage);
 
     try {
       await _speechService.startListening(
@@ -108,7 +119,7 @@ class _VoiceFirstHomeState extends State<VoiceFirstHome>
     }
   }
 
-  void _stopListening() {
+  Future<void> _stopListening() async {
     if (!mounted) return;
 
     setState(() {
@@ -116,7 +127,16 @@ class _VoiceFirstHomeState extends State<VoiceFirstHome>
     });
 
     _pulseController.stop();
-    _speechService.stopListening();
+    await _speechService.stopListening();
+
+    // Audio feedback for visually impaired users when manually stopped
+    if (_isListeningEnabled) {
+      final stoppedMessage = _languageProvider.isSwahili
+          ? 'Nimesimama'
+          : 'Stopped';
+
+      await _ttsService.speak(stoppedMessage);
+    }
   }
 
   Future<void> _handleVoiceInput(String input) async {
@@ -153,19 +173,30 @@ class _VoiceFirstHomeState extends State<VoiceFirstHome>
       _isProcessing = false;
     });
 
-    // Auto-restart listening after 2 seconds
+    // Only auto-restart if voice is still enabled (not manually disabled)
     await Future.delayed(const Duration(milliseconds: 2000));
-    if (mounted) _startListening();
+    if (mounted && _isListeningEnabled) {
+      _startListening();
+    }
   }
 
   void _handleVoiceError(String error) {
     if (kDebugMode) print('❌ Voice error: $error');
-    _stopListening();
-    _updateStatus('Voice error occurred');
 
-    // Restart listening after error
-    Future.delayed(const Duration(milliseconds: 3000), () {
-      if (mounted) _startListening();
+    // Don't announce errors - just quietly restart listening
+    setState(() {
+      _isListening = false;
+    });
+
+    _pulseController.stop();
+    _speechService.stopListening();
+    _updateStatus('Restarting...');
+
+    // Only restart if voice is still enabled - no error announcement
+    Future.delayed(const Duration(milliseconds: 2000), () {
+      if (mounted && _isListeningEnabled) {
+        _startListening();
+      }
     });
   }
 
@@ -231,11 +262,14 @@ class _VoiceFirstHomeState extends State<VoiceFirstHome>
       return;
     }
 
-    // Process main commands - QUESTION DETECTION FIRST!
-    if (_isQuestion(input)) {
-      // Auto-detect questions BEFORE keyword matching
-      await _handleQuestion(input);
-    } else if (input.startsWith('unknown_command:')) {
+    // Check for listening control commands
+    if (_isListeningControlCommand(input)) {
+      await _handleListeningControl(input);
+      return;
+    }
+
+    // Process specific commands FIRST, then questions
+    if (input.startsWith('unknown_command:')) {
       // Handle unknown commands with prefix
       final actualInput = input.substring('unknown_command:'.length);
       if (_isQuestion(actualInput)) {
@@ -261,6 +295,9 @@ class _VoiceFirstHomeState extends State<VoiceFirstHome>
     } else if (command.contains('stop') || command.contains('quiet')) {
       await _ttsService.stop();
       _updateStatus('Stopped');
+    } else if (_isQuestion(input)) {
+      // Check for questions AFTER specific commands
+      await _handleQuestion(input);
     } else {
       await _handleUnknownCommand(input);
     }
@@ -284,11 +321,19 @@ class _VoiceFirstHomeState extends State<VoiceFirstHome>
     ];
     final words = lowerInput.split(' ');
 
-    return words.isNotEmpty && questionWords.contains(words.first) ||
+    // Check for explicit question patterns
+    bool startsWithQuestionWord =
+        words.isNotEmpty && questionWords.contains(words.first);
+    bool hasQuestionPhrases =
         lowerInput.contains('tell me') ||
         lowerInput.contains('explain') ||
-        lowerInput.endsWith('?') ||
-        words.length > 5;
+        lowerInput.contains('what about') ||
+        lowerInput.contains('how about');
+    bool endsWithQuestionMark = lowerInput.endsWith('?');
+
+    // Only treat as question if it has clear question indicators
+    // Remove the generic "words.length > 5" rule that was causing issues
+    return startsWithQuestionWord || hasQuestionPhrases || endsWithQuestionMark;
   }
 
   Future<void> _handleLanguageChange(String targetLanguage) async {
@@ -315,8 +360,145 @@ class _VoiceFirstHomeState extends State<VoiceFirstHome>
     }
   }
 
+  /// Check if input is a listening control command
+  bool _isListeningControlCommand(String input) {
+    final lowerInput = input.toLowerCase().trim();
+
+    // English commands
+    if (lowerInput.contains('stop listening') ||
+        lowerInput.contains('pause listening') ||
+        lowerInput.contains('disable voice') ||
+        lowerInput.contains('turn off voice') ||
+        lowerInput.contains('mute voice') ||
+        lowerInput.contains('sleep mode') ||
+        lowerInput.contains('go to sleep')) {
+      return true;
+    }
+
+    // Swahili commands
+    if (lowerInput.contains('acha kusikiliza') ||
+        lowerInput.contains('simama kusikiliza') ||
+        lowerInput.contains('zima sauti') ||
+        lowerInput.contains('pumzika') ||
+        lowerInput.contains('lala')) {
+      return true;
+    }
+
+    // Wake up commands (when listening is disabled)
+    if (lowerInput.contains('start listening') ||
+        lowerInput.contains('wake up') ||
+        lowerInput.contains('hello vias') ||
+        lowerInput.contains('hey vias') ||
+        lowerInput.contains('activate voice') ||
+        lowerInput.contains('turn on voice') ||
+        lowerInput.contains('enable voice')) {
+      return true;
+    }
+
+    // Swahili wake up commands
+    if (lowerInput.contains('anza kusikiliza') ||
+        lowerInput.contains('amka') ||
+        lowerInput.contains('hujambo vias') ||
+        lowerInput.contains('washa sauti')) {
+      return true;
+    }
+
+    return false;
+  }
+
+  /// Handle listening control commands
+  Future<void> _handleListeningControl(String input) async {
+    final lowerInput = input.toLowerCase().trim();
+
+    // Stop/Disable listening commands
+    if (lowerInput.contains('stop listening') ||
+        lowerInput.contains('pause listening') ||
+        lowerInput.contains('disable voice') ||
+        lowerInput.contains('turn off voice') ||
+        lowerInput.contains('mute voice') ||
+        lowerInput.contains('sleep mode') ||
+        lowerInput.contains('go to sleep') ||
+        lowerInput.contains('acha kusikiliza') ||
+        lowerInput.contains('simama kusikiliza') ||
+        lowerInput.contains('zima sauti') ||
+        lowerInput.contains('pumzika') ||
+        lowerInput.contains('lala')) {
+      await _disableListening();
+      return;
+    }
+
+    // Start/Enable listening commands
+    if (lowerInput.contains('start listening') ||
+        lowerInput.contains('wake up') ||
+        lowerInput.contains('hello vias') ||
+        lowerInput.contains('hey vias') ||
+        lowerInput.contains('activate voice') ||
+        lowerInput.contains('turn on voice') ||
+        lowerInput.contains('enable voice') ||
+        lowerInput.contains('anza kusikiliza') ||
+        lowerInput.contains('amka') ||
+        lowerInput.contains('hujambo vias') ||
+        lowerInput.contains('washa sauti')) {
+      await _enableListening();
+      return;
+    }
+  }
+
+  /// Disable voice listening
+  Future<void> _disableListening() async {
+    if (kDebugMode) print('🔇 Disabling voice listening...');
+
+    _isListeningEnabled = false;
+
+    // Stop current listening
+    if (_isListening) {
+      await _speechService.stopListening();
+      _isListening = false;
+    }
+
+    _updateStatus('Voice disabled');
+
+    final message = _languageProvider.isSwahili
+        ? 'Sauti imezimwa. Sema "Amka" au "Hujambo VIAS" kuiamsha tena.'
+        : 'Voice disabled. Say "Wake up" or "Hello VIAS" to enable again.';
+
+    await _ttsService.speak(message);
+
+    // Update UI to show disabled state
+    setState(() {});
+
+    if (kDebugMode) print('✅ Voice listening disabled');
+  }
+
+  /// Enable voice listening
+  Future<void> _enableListening() async {
+    if (kDebugMode) print('🔊 Enabling voice listening...');
+
+    _isListeningEnabled = true;
+    _updateStatus('Voice enabled');
+
+    final message = _languageProvider.isSwahili
+        ? 'Sauti imewashwa. Sasa ninakusikiliza.'
+        : 'Voice enabled. I am now listening.';
+
+    await _ttsService.speak(message);
+
+    // Start listening again
+    await Future.delayed(const Duration(milliseconds: 500));
+    _startListening();
+
+    if (kDebugMode) print('✅ Voice listening enabled');
+  }
+
   Future<void> _handleHelp() async {
     _updateStatus('Providing help');
+
+    // Log help command to backend for tracking
+    try {
+      await QnAService.logCommand('help');
+    } catch (e) {
+      if (kDebugMode) print('⚠️ Failed to log help command: $e');
+    }
 
     // Use language-aware help message
     final helpMessage = _languageProvider.getHelpMessage();
@@ -412,11 +594,19 @@ class _VoiceFirstHomeState extends State<VoiceFirstHome>
 
   Future<void> _handlePrograms() async {
     _updateStatus('Loading programs...');
+
+    // Log programs command to backend for tracking
+    try {
+      await QnAService.logCommand('programs');
+    } catch (e) {
+      if (kDebugMode) print('⚠️ Failed to log programs command: $e');
+    }
+
     const programsInfo = '''
 Available programs at the university:
 
 Bachelor of Computer Science - 4 years, focuses on programming and software development
-Bachelor of Information Technology - 4 years, focuses on IT infrastructure and networks  
+Bachelor of Information Technology - 4 years, focuses on IT infrastructure and networks
 Diploma in Computer Studies - 2 years, foundation computing course
 
 You can ask specific questions like "What are the requirements for computer science?" for more details.
@@ -429,6 +619,14 @@ You can ask specific questions like "What are the requirements for computer scie
 
   Future<void> _handleFees() async {
     _updateStatus('Loading fees...');
+
+    // Log fees command to backend for tracking
+    try {
+      await QnAService.logCommand('fees');
+    } catch (e) {
+      if (kDebugMode) print('⚠️ Failed to log fees command: $e');
+    }
+
     const feesInfo = '''
 University fee structure:
 
@@ -487,12 +685,21 @@ Ask me about specific programs or payment plans for more details.
                     flex: 3,
                     child: Center(
                       child: GestureDetector(
-                        onTap: () {
-                          if (_isListening) {
-                            _stopListening();
-                          } else {
-                            _startListening();
-                          }
+                        onTap: () async {
+                          // Provide current status and voice commands
+                          final message = _languageProvider.isSwahili
+                              ? _isListeningEnabled
+                                    ? _isListening
+                                          ? 'Ninakusikiliza. Sema "Acha kusikiliza" kunizima.'
+                                          : 'Tayari kusikiliza. Sema "Acha kusikiliza" kunizima.'
+                                    : 'Sauti imezimwa. Sema "Amka" kuniamsha.'
+                              : _isListeningEnabled
+                              ? _isListening
+                                    ? 'I am listening. Say "Stop listening" to disable me.'
+                                    : 'Ready to listen. Say "Stop listening" to disable me.'
+                              : 'Voice is disabled. Say "Wake up" to enable me.';
+
+                          await _ttsService.speak(message);
                         },
                         child: AnimatedBuilder(
                           animation: _isListening
@@ -580,42 +787,10 @@ Ask me about specific programs or payment plans for more details.
                     ),
                   ),
 
-                  // Emergency Stop Button (Hidden but accessible)
+                  // Empty space - no visual instructions needed for voice-first design
                   Expanded(
                     flex: 1,
-                    child: Center(
-                      child: GestureDetector(
-                        onLongPress: () async {
-                          await _ttsService.stop();
-                          _stopListening();
-                          await _ttsService.speak(
-                            'Voice assistant stopped. Tap the circle to restart.',
-                          );
-                          _updateStatus('Stopped - Tap circle to restart');
-                        },
-                        child: Container(
-                          width: 100,
-                          height: 50,
-                          decoration: BoxDecoration(
-                            color: Colors.red.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(25),
-                            border: Border.all(
-                              color: Colors.red.withOpacity(0.3),
-                            ),
-                          ),
-                          child: const Center(
-                            child: Text(
-                              'HOLD TO STOP',
-                              style: TextStyle(
-                                color: Colors.red,
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
+                    child: Container(), // Clean, minimal design
                   ),
                 ],
               ),
@@ -627,6 +802,7 @@ Ask me about specific programs or payment plans for more details.
   }
 
   Color _getIndicatorColor() {
+    if (!_isListeningEnabled) return Colors.red; // Voice disabled
     if (_isProcessing) return Colors.orange;
     if (_isListening) return Colors.blue;
     return Colors.grey[700]!;

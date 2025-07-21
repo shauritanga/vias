@@ -50,7 +50,7 @@ class _AdminLoginState extends State<AdminLogin> {
     await _ttsService.speak(
       'Welcome to the VIAS Admin Login. '
       'Please enter your administrator credentials to access the dashboard. '
-      'Use username: admin and password: dit2024 for demo access.',
+      'Use username: admin and password: dit@2024!Admin for demo access.',
     );
   }
 

@@ -228,10 +228,10 @@ class _AdminDashboardState extends State<AdminDashboard>
                 if (result.aiProcessed) {
                   message =
                       'PDF processed successfully with AI integration! '
-                      '${result.totalChunks ?? 0} content chunks created with OpenAI embeddings. '
+                      '${result.totalChunks ?? 0} content chunks created with Hugging Face AI (free service). '
                       'Content is now available for intelligent Q&A.';
                   speechMessage =
-                      'PDF prospectus has been processed with AI integration. '
+                      'PDF prospectus has been processed with Hugging Face AI integration. '
                       '${result.totalChunks ?? 0} content chunks created. '
                       'Intelligent question and answer system is now ready.';
                 } else {
