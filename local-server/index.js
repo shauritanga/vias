@@ -669,13 +669,13 @@ function getQuickResponse(question) {
 
   // Common greetings and simple questions
   const quickResponses = {
-    'hello': 'Hello! I\'m here to help you with questions about the prospectus. What would you like to know?',
-    'hi': 'Hi there! I can help you find information about programs, fees, admission requirements, and more. What\'s your question?',
-    'help': 'I can help you with questions about:\n• Academic programs and courses\n• Fees and costs\n• Admission requirements\n• Contact information\n• Campus facilities\n\nWhat would you like to know?',
-    'what can you do': 'I can answer questions about the uploaded prospectus document, including:\n• Programs offered\n• Fees and costs\n• Admission requirements\n• Application process\n• Contact details\n\nJust ask me anything!',
-    'test': 'Test successful! I\'m working properly and ready to answer your questions about the prospectus.',
-    'status': 'System status: ✅ Online and ready to help with prospectus questions.',
-    'ping': 'Pong! The Q&A system is responding normally.'
+    'hello': 'Hello. What would you like to know about the prospectus?',
+    'hi': 'Hi. What information do you need?',
+    'help': 'I can help with questions about programs, fees, admission requirements, and other prospectus information.',
+    'what can you do': 'I can answer questions about programs, fees, admission requirements, and other information from the prospectus.',
+    'test': 'Working.',
+    'status': 'Online.',
+    'ping': 'Online.'
   };
 
   // Check for exact matches first
@@ -688,11 +688,6 @@ function getQuickResponse(question) {
     if (questionLower.includes(key)) {
       return response;
     }
-  }
-
-  // Check for very short questions that might be tests
-  if (questionLower.length <= 3) {
-    return 'I received your message! Please ask a more specific question about the prospectus, such as "What programs are offered?" or "What are the fees?"';
   }
 
   return null; // No quick response available
@@ -1138,7 +1133,7 @@ function detectQuestionType(question) {
 async function generateAnswerWithHuggingFace(question, relevantChunks, history = []) {
   try {
     if (relevantChunks.length === 0) {
-      return "I couldn't find relevant information about that topic in the uploaded prospectus.";
+      return "Unable to find information about that topic.";
     }
 
     // Step 1: Classify question intent
@@ -1232,7 +1227,7 @@ async function generateAnswerWithHuggingFace(question, relevantChunks, history =
     if (!isAnswerable) {
       // Question is not answerable from the content - give helpful response
       console.log('❌ Question not answerable from content, providing helpful guidance...');
-      return `I couldn't find specific information about "${question}" in the uploaded prospectus. Could you try asking about programs, fees, admission requirements, or other topics covered in the document?`;
+      return "Unable to find information about that topic.";
     }
 
     // Try fallback answer generation
@@ -1776,52 +1771,10 @@ async function validateAnswerQuality(question, answer, context) {
 async function enhanceAnswerWithContext(answer, relevantChunks, questionType) {
   try {
     console.log('✨ Enhancing answer with context...');
-
-    // Add source information
-    const sources = relevantChunks.map(chunk => ({
-      page: chunk.page,
-      tag: chunk.tag || 'General',
-      filename: chunk.filename || 'prospectus'
-    }));
-
-    // Group sources by page for cleaner display
-    const pageGroups = sources.reduce((groups, source) => {
-      const key = `Page ${source.page}`;
-      if (!groups[key]) groups[key] = [];
-      groups[key].push(source.tag);
-      return groups;
-    }, {});
-
-    const sourceText = Object.entries(pageGroups)
-      .map(([page, tags]) => `${page} (${[...new Set(tags)].join(', ')})`)
-      .join(', ');
-
-    // Add confidence and model information
-    let modelInfo = 'Enhanced AI processing';
-    if (questionType === 'list') {
-      modelInfo = 'Hugging Face T5 + Content extraction';
-    } else if (questionType === 'definition') {
-      modelInfo = 'Hugging Face BART summarization';
-    } else if (questionType === 'comparison') {
-      modelInfo = 'Hugging Face DeBERTa advanced QA';
-    } else {
-      modelInfo = 'Hugging Face RoBERTa QA model';
-    }
-
-    // Format enhanced answer
-    const enhancedAnswer = `${answer}
-
-📍 **Sources**: ${sourceText}
-🤗 **AI Model**: ${modelInfo}
-📊 **Confidence**: High (based on ${relevantChunks.length} relevant sections)
-
-💡 *This answer was generated using advanced AI models and validated for quality and relevance.*`;
-
-    return enhancedAnswer;
-
+    return answer; // Just return the clean answer without technical details
   } catch (error) {
     console.log('⚠️ Answer enhancement failed, returning original');
-    return `${answer}\n\n💡 **Source**: Found in ${relevantChunks.length} section(s) of the prospectus.`;
+    return answer;
   }
 }
 
@@ -1830,22 +1783,19 @@ function generateTextOnlyAnswer(question, relevantChunks) {
   console.log('📄 Generating text-only answer (no AI models needed)...');
 
   if (relevantChunks.length === 0) {
-    return "I couldn't find relevant information about that topic in the uploaded prospectus. Could you try asking about programs, fees, admission requirements, or other topics covered in the document?";
+    return "Unable to find information about that topic in the prospectus.";
   }
 
   // Extract and format relevant text
   const extractedContent = relevantChunks
-    .slice(0, 3) // Limit to top 3 most relevant chunks
+    .slice(0, 2) // Limit to top 2 most relevant chunks
     .map((chunk, index) => {
-      const preview = chunk.text.substring(0, 300);
-      return `**From Page ${chunk.page}:**\n${preview}${chunk.text.length > 300 ? '...' : ''}`;
+      const preview = chunk.text.substring(0, 400);
+      return preview + (chunk.text.length > 400 ? '...' : '');
     })
     .join('\n\n');
 
-  // Create a helpful response
-  const response = `Based on the prospectus content, here's what I found related to "${question}":\n\n${extractedContent}\n\n💡 **Note**: This information is extracted directly from the document. For more detailed answers, please ensure the AI models are accessible or contact the admissions office directly.`;
-
-  return response;
+  return extractedContent;
 }
 
 // Enhanced Fallback Answer Generation
@@ -1888,14 +1838,15 @@ async function generateFallbackAnswer(question, relevantChunks) {
 
     // Final fallback to text extraction
     const extractedContext = relevantChunks
-      .map((chunk, index) => `**Page ${chunk.page}**: ${chunk.text.substring(0, 200)}...`)
+      .slice(0, 2)
+      .map(chunk => chunk.text.substring(0, 300))
       .join('\n\n');
 
-    return `Based on the prospectus content, here's what I found related to your question:\n\n${extractedContext}\n\n💡 **Note**: This is extracted content from the document. For more detailed answers, the AI models may need better connectivity.`;
+    return extractedContext;
 
   } catch (error) {
     console.log('❌ All fallback methods failed');
-    return "I encountered an issue processing your question. Please try rephrasing your question or contact support if the problem persists.";
+    return "Unable to process your question at this time.";
   }
 }
 
@@ -2251,7 +2202,7 @@ Please provide a clear, conversational answer based ONLY on the information prov
     });
 
     return completion.choices[0]?.message?.content?.trim() ||
-      "I apologize, but I'm having trouble generating a response right now. Please try again.";
+      "Unable to generate a response at this time.";
 
   } catch (error) {
     console.error('❌ Error generating conversational answer:', error);
@@ -2261,7 +2212,7 @@ Please provide a clear, conversational answer based ONLY on the information prov
       .map(chunk => chunk.text.substring(0, 300))
       .join('\n\n');
 
-    return `Based on the prospectus information I found:\n\n${context}\n\nFor more detailed information, please contact the admissions office.`;
+    return context;
   }
 }
 
@@ -2579,7 +2530,7 @@ app.post('/api/answer-question', async (req, res) => {
       return res.status(400).json({
         success: false,
         error: 'Question is required',
-        userMessage: getTranslation('noQuestion')
+        userMessage: 'Please provide a question.'
       });
     }
 
@@ -2588,16 +2539,12 @@ app.post('/api/answer-question', async (req, res) => {
     // Quick response for common questions (bypass AI for speed)
     const quickResponse = getQuickResponse(question);
     if (quickResponse) {
-      console.log(`⚡ [${requestId}] Using quick response (no AI needed)`);
+      console.log(`⚡ [${requestId}] Using quick response`);
       return res.json({
         success: true,
         question: question,
         answer: quickResponse,
-        relevantChunks: 0,
-        sources: [],
-        conversational: true,
-        provider: 'quick_response',
-        processingTime: Date.now() - requestId
+        conversational: true
       });
     }
 
@@ -2639,7 +2586,7 @@ app.post('/api/answer-question', async (req, res) => {
         success: false,
         question: question,
         error: 'No PDF uploaded',
-        userMessage: getTranslation('noContent'),
+        userMessage: 'No prospectus content available.',
         conversational: true,
         currentLanguage: currentLanguage
       });
@@ -2656,7 +2603,7 @@ app.post('/api/answer-question', async (req, res) => {
         success: false,
         question: question,
         error: 'No relevant content found',
-        userMessage: "I couldn't find relevant information about that topic in the uploaded prospectus. Could you try asking about programs, fees, admission requirements, or other topics covered in the document?",
+        userMessage: "Unable to find information about that topic in the prospectus.",
         conversational: true
       });
     }
@@ -2681,25 +2628,16 @@ app.post('/api/answer-question', async (req, res) => {
     const answer = await generateAnswerWithHuggingFace(question, relevantChunks, history);
 
     const processingTime = Date.now() - startTime;
-    console.log(`✅ [${requestId}] Hugging Face answer generated in ${processingTime}ms (${relevantChunks.length} relevant chunks)`);
-    console.log(`📝 [${requestId}] Answer preview: ${answer.substring(0, 100)}...`);
+    console.log(`✅ [${requestId}] Answer generated in ${processingTime}ms`);
 
     const response = {
       success: true,
       question: question,
       answer: answer,
-      relevantChunks: relevantChunks.length,
-      sources: relevantChunks.map(chunk => ({
-        page: chunk.page,
-        filename: chunk.filename,
-        relevance: chunk.relevance || 0.8
-      })),
-      conversational: true,
-      provider: 'huggingface',
-      processingTime: processingTime
+      conversational: true
     };
 
-    console.log(`🚀 [${requestId}] Sending successful response`);
+    console.log(`🚀 [${requestId}] Sending response`);
     res.json(response);
 
   } catch (error) {
@@ -2715,26 +2653,12 @@ app.post('/api/answer-question', async (req, res) => {
     // Ensure question is available (fallback from req.body)
     const questionForResponse = question || req.body?.question || 'Unknown question';
 
-    // Return clear error message for user
-    let userMessage = "I'm having trouble processing your question right now. ";
-
-    if (error.message.includes('rate limit') || error.message.includes('quota')) {
-      userMessage += "The AI service is temporarily overloaded. Please try again in a few minutes.";
-    } else if (error.message.includes('network') || error.message.includes('timeout')) {
-      userMessage += "There's a network connection issue. Please check your internet connection and try again.";
-    } else if (error.message.includes('model') || error.message.includes('loading')) {
-      userMessage += "The AI model is still loading. Please wait a moment and try again.";
-    } else {
-      userMessage += "Please try rephrasing your question or contact support if the issue persists.";
-    }
-
     res.status(500).json({
       success: false,
       question: questionForResponse,
       error: error.message,
-      userMessage: userMessage,
-      conversational: true,
-      timestamp: new Date().toISOString()
+      userMessage: "Unable to process your question at this time.",
+      conversational: true
     });
   }
 });
@@ -2861,7 +2785,7 @@ async function generateSectionSummary(sectionTopic, contentChunks) {
     const relevantChunks = await findRelevantContent(sectionTopic, contentChunks);
 
     if (relevantChunks.length === 0) {
-      return `I couldn't find specific information about "${sectionTopic}" in the uploaded prospectus. The document may not contain this section, or it might be described using different terms. Try asking about specific topics like programs, fees, or admissions.`;
+      return "Unable to find information about that topic.";
     }
 
     const context = relevantChunks
