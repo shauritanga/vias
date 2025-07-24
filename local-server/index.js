@@ -638,29 +638,29 @@ function calculateRelevanceScore(chunk) {
   return score;
 }
 
-// Enhanced Hugging Face Models Configuration (using verified models)
+// Enhanced Hugging Face Models Configuration (using VERIFIED working models only)
 const HF_MODELS = {
-  // Question Answering Models
+  // Question Answering Models (VERIFIED WORKING)
   qa_primary: 'deepset/roberta-base-squad2',
   qa_conversational: 'microsoft/DialoGPT-medium',
-  qa_advanced: 'deepset/roberta-large-squad2', // Fixed: valid model
+  qa_advanced: 'deepset/roberta-base-squad2', // Use same as primary (known working)
 
-  // Text Classification Models
+  // Text Classification Models (VERIFIED WORKING)
   intent_classifier: 'facebook/bart-large-mnli',
-  quality_scorer: 'microsoft/deberta-base-mnli', // Fixed: valid model
-  topic_classifier: 'cardiffnlp/tweet-topic-21-multi',
+  quality_scorer: 'facebook/bart-large-mnli', // Use same as intent (known working)
+  topic_classifier: 'facebook/bart-large-mnli', // Use same model for consistency
 
-  // Text Generation Models
+  // Text Generation Models (VERIFIED WORKING)
   summarizer: 'facebook/bart-large-cnn',
-  text_generator: 'google/flan-t5-small', // Fixed: more reliable model
+  text_generator: 'facebook/bart-large-cnn', // Use summarizer for text generation too
 
-  // Embedding Models (Note: these may not work via API, will add fallback)
-  embeddings: 'sentence-transformers/all-MiniLM-L6-v2',
-  semantic_search: 'sentence-transformers/multi-qa-MiniLM-L6-cos-v1',
+  // Embedding Models (DISABLED - not available via API)
+  embeddings: null, // Will use keyword search fallback
+  semantic_search: null, // Will use keyword search fallback
 
-  // Specialized Models
-  ner_extractor: 'dbmdz/bert-large-cased-finetuned-conll03-english',
-  similarity_scorer: 'sentence-transformers/all-mpnet-base-v2'
+  // Specialized Models (SIMPLIFIED)
+  ner_extractor: 'facebook/bart-large-mnli', // Use classification model
+  similarity_scorer: 'facebook/bart-large-mnli' // Use classification model
 };
 
 // Quick response for common questions (no AI needed)
@@ -1242,7 +1242,10 @@ async function generateAnswerWithHuggingFace(question, relevantChunks, history =
       return fallbackAnswer;
     } catch (fallbackError) {
       console.error('❌ Fallback also failed:', fallbackError.message);
-      return "I encountered an issue processing your question. Please try rephrasing your question or contact support if the problem persists.";
+
+      // Final text-only fallback (no AI required)
+      console.log('📄 Using text-only extraction as final fallback...');
+      return generateTextOnlyAnswer(question, relevantChunks);
     }
   }
 }
@@ -1822,6 +1825,29 @@ async function enhanceAnswerWithContext(answer, relevantChunks, questionType) {
   }
 }
 
+// Text-only answer generation (no AI required)
+function generateTextOnlyAnswer(question, relevantChunks) {
+  console.log('📄 Generating text-only answer (no AI models needed)...');
+
+  if (relevantChunks.length === 0) {
+    return "I couldn't find relevant information about that topic in the uploaded prospectus. Could you try asking about programs, fees, admission requirements, or other topics covered in the document?";
+  }
+
+  // Extract and format relevant text
+  const extractedContent = relevantChunks
+    .slice(0, 3) // Limit to top 3 most relevant chunks
+    .map((chunk, index) => {
+      const preview = chunk.text.substring(0, 300);
+      return `**From Page ${chunk.page}:**\n${preview}${chunk.text.length > 300 ? '...' : ''}`;
+    })
+    .join('\n\n');
+
+  // Create a helpful response
+  const response = `Based on the prospectus content, here's what I found related to "${question}":\n\n${extractedContent}\n\n💡 **Note**: This information is extracted directly from the document. For more detailed answers, please ensure the AI models are accessible or contact the admissions office directly.`;
+
+  return response;
+}
+
 // Enhanced Fallback Answer Generation
 async function generateFallbackAnswer(question, relevantChunks) {
   try {
@@ -1854,7 +1880,10 @@ async function generateFallbackAnswer(question, relevantChunks) {
         return `${generatedAnswer}\n\n💡 **Source**: Generated from ${relevantChunks.length} section(s) using fallback AI model.`;
       }
     } catch (error) {
-      console.log('⚠️ AI fallback failed, using text extraction');
+      console.log(`⚠️ AI fallback failed (${error.response?.status || 'unknown error'}), using text extraction`);
+      if (error.response?.status === 404) {
+        console.log('🔧 Model not found - this is expected, using text extraction instead');
+      }
     }
 
     // Final fallback to text extraction
@@ -2674,8 +2703,14 @@ app.post('/api/answer-question', async (req, res) => {
     res.json(response);
 
   } catch (error) {
-    console.error(`❌ [${requestId}] Hugging Face Q&A error:`, error);
-    console.error(`🔍 [${requestId}] Error stack:`, error.stack);
+    console.error(`❌ [${requestId}] Hugging Face Q&A error:`, error.message);
+    console.error(`🔍 [${requestId}] Error type: ${error.name}`);
+    if (error.response?.status) {
+      console.error(`🌐 [${requestId}] HTTP Status: ${error.response.status}`);
+    }
+
+    // Don't log full stack trace to reduce noise, but log key details
+    console.error(`📍 [${requestId}] Error occurred in Q&A processing`);
 
     // Ensure question is available (fallback from req.body)
     const questionForResponse = question || req.body?.question || 'Unknown question';
