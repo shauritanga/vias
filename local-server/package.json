@@ -9,7 +9,8 @@
     "build": "npm install",
     "install-deps": "npm install",
     "test": "node --check index.js",
-    "health": "curl -f http://localhost:${PORT:-10000}/ || exit 1"
+    "health": "curl -f http://localhost:${PORT:-10000}/ || exit 1",
+    "health-render": "curl -f https://vias.onrender.com/ || exit 1"
   },
   "engines": {
     "node": ">=18.0.0",
