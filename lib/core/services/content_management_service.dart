@@ -1,5 +1,7 @@
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:http/http.dart' as http;
 import '../../shared/models/prospectus_models.dart';
 import 'pdf_processing_service.dart';
 import '../utils/db_helper.dart';
@@ -743,5 +745,95 @@ class QnAService {
       print('❌ Error fetching content chunks: $e');
       return [];
     }
+  }
+
+  /// Generate PDF summary using AI
+  static Future<Map<String, dynamic>> generatePDFSummary({
+    String summaryType = 'overview',
+    int maxLength = 500,
+    dynamic sections = 'all',
+  }) async {
+    try {
+      if (kDebugMode) {
+        print(
+          '📄 Generating PDF summary: $summaryType (max: $maxLength chars)',
+        );
+      }
+
+      final response = await http.post(
+        Uri.parse('${VercelBackendService.baseUrl}/api/summarize-pdf'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'summaryType': summaryType,
+          'maxLength': maxLength,
+          'sections': sections,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+
+        if (data['success'] == true) {
+          if (kDebugMode) {
+            print('✅ PDF summary generated successfully');
+            print('📊 Compression: ${data['metadata']['compressionRatio']}');
+          }
+
+          return {
+            'success': true,
+            'summary': data['summary'],
+            'summaryType': data['summaryType'],
+            'metadata': data['metadata'],
+            'timestamp': data['timestamp'],
+          };
+        } else {
+          throw Exception(data['error'] ?? 'Summary generation failed');
+        }
+      } else {
+        final errorData = jsonDecode(response.body);
+        throw Exception(
+          errorData['userMessage'] ?? 'Failed to generate summary',
+        );
+      }
+    } catch (e) {
+      if (kDebugMode) print('❌ PDF summary error: $e');
+
+      return {
+        'success': false,
+        'error': e.toString(),
+        'summary':
+            'Failed to generate PDF summary. Please ensure a PDF is uploaded and try again.',
+      };
+    }
+  }
+
+  /// Get available summary types
+  static List<Map<String, String>> getSummaryTypes() {
+    return [
+      {
+        'type': 'overview',
+        'name': 'Complete Overview',
+        'description': 'Comprehensive summary of the entire document',
+        'icon': '📋',
+      },
+      {
+        'type': 'programs',
+        'name': 'Programs & Courses',
+        'description': 'Focus on academic programs and courses offered',
+        'icon': '🎓',
+      },
+      {
+        'type': 'fees',
+        'name': 'Fees & Costs',
+        'description': 'Summary of all fees and financial information',
+        'icon': '💰',
+      },
+      {
+        'type': 'admission',
+        'name': 'Admission Requirements',
+        'description': 'Requirements and application process details',
+        'icon': '📝',
+      },
+    ];
   }
 }

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
+import '../config/app_config.dart';
 
 /// Service to connect to Vercel backend functions
 class VercelBackendService {
@@ -11,18 +12,18 @@ class VercelBackendService {
   VercelBackendService._internal();
 
   // Backend URL - Multiple free options available:
-  // 1. Vercel (FREE - 100GB-hours/month): 'https://your-app.vercel.app'
-  // 2. Netlify (FREE - 125K requests/month): 'https://your-app.netlify.app'
-  // 3. Railway (FREE - $5 credit monthly): 'https://your-app.railway.app'
-  // 4. Local development: 'http://localhost:3001'
+  // 1. Render (FREE - 750 hours/month): 'https://your-app.onrender.com'
+  // 2. Vercel (FREE - 100GB-hours/month): 'https://your-app.vercel.app'
+  // 3. Netlify (FREE - 125K requests/month): 'https://your-app.netlify.app'
+  // 4. Railway (FREE - $5 credit monthly): 'https://your-app.railway.app'
+  // 5. Local development: 'http://localhost:10000'
 
-  // Backend URL configuration - ALWAYS use Render
-  static const String baseUrl = 'https://vias.onrender.com';
+  // Backend URL configuration - Uses AppConfig for environment-aware URLs
+  // Automatically switches between production (Render) and development (local) based on build mode
+  static String get baseUrl => AppConfig.serverUrl;
 
-  // Fallback URLs for network issues
-  static const List<String> fallbackUrls = [
-    'https://vias.onrender.com', // Primary Render URL
-  ];
+  // Fallback URLs for network resilience - configured in AppConfig
+  static List<String> get fallbackUrls => AppConfig.fallbackUrls;
 
   /// Try multiple URLs to handle Android emulator network issues
   Future<http.Response> _makeRequestWithFallback(
@@ -57,8 +58,9 @@ class VercelBackendService {
             .post(uri, headers: headers, body: body)
             .timeout(const Duration(seconds: 10));
 
-        if (kDebugMode)
+        if (kDebugMode) {
           print('✅ Fallback URL successful: ${response.statusCode}');
+        }
         return response;
       } catch (e) {
         if (kDebugMode) print('❌ Fallback URL failed ($fallbackUrl): $e');
@@ -443,6 +445,52 @@ class VercelBackendService {
     } catch (e) {
       if (kDebugMode) print('❌ Log command failed: $e');
       // Don't throw - logging is not critical
+    }
+  }
+
+  /// Get admission information from processed PDF
+  Future<Map<String, dynamic>> getAdmissionInfo() async {
+    try {
+      if (kDebugMode) {
+        print('📋 Requesting admission information...');
+      }
+
+      final response = await _makeRequestWithFallback('/api/admission-info', {
+        'Content-Type': 'application/json',
+      }, '{}');
+
+      if (kDebugMode) {
+        print('📥 Admission info response: ${response.statusCode}');
+      }
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (kDebugMode) {
+          print('✅ Admission info retrieved successfully');
+          print('📊 Response: ${data.toString().substring(0, 200)}...');
+        }
+        return data;
+      } else {
+        final errorBody = response.body;
+        if (kDebugMode) {
+          print('❌ Admission info failed with status: ${response.statusCode}');
+          print('❌ Error response: $errorBody');
+        }
+
+        try {
+          final error = json.decode(errorBody);
+          throw Exception(
+            'Admission info failed: ${error['error'] ?? 'Unknown error'}',
+          );
+        } catch (jsonError) {
+          throw Exception(
+            'Admission info failed: HTTP ${response.statusCode} - $errorBody',
+          );
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) print('❌ Admission info error: $e');
+      rethrow;
     }
   }
 }

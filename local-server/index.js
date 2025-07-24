@@ -663,10 +663,49 @@ const HF_MODELS = {
   similarity_scorer: 'sentence-transformers/all-mpnet-base-v2'
 };
 
+// Quick response for common questions (no AI needed)
+function getQuickResponse(question) {
+  const questionLower = question.toLowerCase().trim();
+
+  // Common greetings and simple questions
+  const quickResponses = {
+    'hello': 'Hello! I\'m here to help you with questions about the prospectus. What would you like to know?',
+    'hi': 'Hi there! I can help you find information about programs, fees, admission requirements, and more. What\'s your question?',
+    'help': 'I can help you with questions about:\n• Academic programs and courses\n• Fees and costs\n• Admission requirements\n• Contact information\n• Campus facilities\n\nWhat would you like to know?',
+    'what can you do': 'I can answer questions about the uploaded prospectus document, including:\n• Programs offered\n• Fees and costs\n• Admission requirements\n• Application process\n• Contact details\n\nJust ask me anything!',
+    'test': 'Test successful! I\'m working properly and ready to answer your questions about the prospectus.',
+    'status': 'System status: ✅ Online and ready to help with prospectus questions.',
+    'ping': 'Pong! The Q&A system is responding normally.'
+  };
+
+  // Check for exact matches first
+  if (quickResponses[questionLower]) {
+    return quickResponses[questionLower];
+  }
+
+  // Check for partial matches
+  for (const [key, response] of Object.entries(quickResponses)) {
+    if (questionLower.includes(key)) {
+      return response;
+    }
+  }
+
+  // Check for very short questions that might be tests
+  if (questionLower.length <= 3) {
+    return 'I received your message! Please ask a more specific question about the prospectus, such as "What programs are offered?" or "What are the fees?"';
+  }
+
+  return null; // No quick response available
+}
+
 // Enhanced Hugging Face API Functions
 async function callHuggingFaceAPI(model, inputs, parameters = {}) {
+  const requestId = Date.now();
+  const startTime = Date.now();
+
   try {
-    console.log(`🤗 Calling Hugging Face API: ${model}`);
+    console.log(`🤗 [${requestId}] Calling Hugging Face API: ${model}`);
+    console.log(`📊 [${requestId}] Input size: ${JSON.stringify(inputs).length} chars`);
 
     // Try with API key first, fallback to free inference if 401
     let headers = {
@@ -674,13 +713,21 @@ async function callHuggingFaceAPI(model, inputs, parameters = {}) {
     };
 
     if (HUGGING_FACE_API_KEY && HUGGING_FACE_API_KEY !== 'hf_YOUR_NEW_TOKEN_HERE') {
-      console.log(`🔑 Using API key: ${HUGGING_FACE_API_KEY.substring(0, 10)}...`);
+      console.log(`🔑 [${requestId}] Using API key: ${HUGGING_FACE_API_KEY.substring(0, 10)}...`);
       headers['Authorization'] = `Bearer ${HUGGING_FACE_API_KEY}`;
     } else {
-      console.log(`🆓 Using free inference (no API key)`);
+      console.log(`🆓 [${requestId}] Using free inference (no API key)`);
     }
 
-    const response = await axios.post(
+    // Create timeout promise (20 seconds to leave buffer for Render's 30s limit)
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => {
+        reject(new Error(`Hugging Face API timeout after 20 seconds for model: ${model}`));
+      }, 20000);
+    });
+
+    // Create API request promise
+    const apiPromise = axios.post(
       `${HF_API_URL}/${model}`,
       {
         inputs: inputs,
@@ -688,11 +735,16 @@ async function callHuggingFaceAPI(model, inputs, parameters = {}) {
       },
       {
         headers: headers,
-        timeout: 30000 // 30 second timeout
+        timeout: 20000 // 20 second timeout
       }
     );
 
-    console.log(`✅ Hugging Face API success: ${response.status}`);
+    // Race between API call and timeout
+    const response = await Promise.race([apiPromise, timeoutPromise]);
+
+    const responseTime = Date.now() - startTime;
+    console.log(`✅ [${requestId}] Hugging Face API success: ${response.status} (${responseTime}ms)`);
+    console.log(`📊 [${requestId}] Response size: ${JSON.stringify(response.data).length} chars`);
     return response.data;
   } catch (error) {
     console.error('❌ Hugging Face API error details:');
@@ -2484,19 +2536,39 @@ app.post('/api/process-pdf', upload.single('pdf'), async (req, res) => {
 
 // Hugging Face-only conversational Q&A with clear error feedback
 app.post('/api/answer-question', async (req, res) => {
-  console.log(`🌐 POST /api/answer-question - Request received`);
+  const requestId = Date.now();
+  console.log(`🌐 [${requestId}] POST /api/answer-question - Request received`);
 
   try {
     const { question, history } = req.body;
-    console.log(`❓ Question: "${question}"`);
-    console.log(`📊 Request body:`, { question: question?.substring(0, 100), historyLength: history?.length || 0 });
+    console.log(`❓ [${requestId}] Question: "${question}"`);
+    console.log(`📊 [${requestId}] Request body:`, { question: question?.substring(0, 100), historyLength: history?.length || 0 });
+    console.log(`🔄 [${requestId}] Starting processing...`);
 
     if (!question) {
-      console.log(`❌ Bad request: No question provided`);
+      console.log(`❌ [${requestId}] Bad request: No question provided`);
       return res.status(400).json({
         success: false,
         error: 'Question is required',
         userMessage: getTranslation('noQuestion')
+      });
+    }
+
+    console.log(`🔍 [${requestId}] Question validation passed`);
+
+    // Quick response for common questions (bypass AI for speed)
+    const quickResponse = getQuickResponse(question);
+    if (quickResponse) {
+      console.log(`⚡ [${requestId}] Using quick response (no AI needed)`);
+      return res.json({
+        success: true,
+        question: question,
+        answer: quickResponse,
+        relevantChunks: 0,
+        sources: [],
+        conversational: true,
+        provider: 'quick_response',
+        processingTime: Date.now() - requestId
       });
     }
 
@@ -2531,7 +2603,9 @@ app.post('/api/answer-question', async (req, res) => {
     }
 
     // Check if we have processed content
+    console.log(`📄 [${requestId}] Checking processed content: ${processedContent.length} chunks`);
     if (processedContent.length === 0) {
+      console.log(`❌ [${requestId}] No PDF content available`);
       return res.json({
         success: false,
         question: question,
@@ -2543,9 +2617,12 @@ app.post('/api/answer-question', async (req, res) => {
     }
 
     // Find relevant content using enhanced semantic search
+    console.log(`🔍 [${requestId}] Starting content search...`);
     const relevantChunks = await findRelevantContentEnhanced(question, processedContent);
+    console.log(`📊 [${requestId}] Found ${relevantChunks.length} relevant chunks`);
 
     if (relevantChunks.length === 0) {
+      console.log(`❌ [${requestId}] No relevant content found`);
       return res.json({
         success: false,
         question: question,
@@ -2555,12 +2632,30 @@ app.post('/api/answer-question', async (req, res) => {
       });
     }
 
+    // Check memory usage before AI processing
+    const memoryBefore = process.memoryUsage();
+    console.log(`💾 [${requestId}] Memory before AI: ${Math.round(memoryBefore.heapUsed / 1024 / 1024)}MB`);
+
+    if (memoryBefore.heapUsed > 400 * 1024 * 1024) { // 400MB threshold
+      console.log(`⚠️ [${requestId}] High memory usage detected, forcing garbage collection`);
+      if (global.gc) {
+        global.gc();
+        const memoryAfterGC = process.memoryUsage();
+        console.log(`🗑️ [${requestId}] Memory after GC: ${Math.round(memoryAfterGC.heapUsed / 1024 / 1024)}MB`);
+      }
+    }
+
     // Generate answer using Hugging Face
+    console.log(`🤖 [${requestId}] Starting AI answer generation...`);
+    const startTime = Date.now();
+
     const answer = await generateAnswerWithHuggingFace(question, relevantChunks, history);
 
-    console.log(`✅ Hugging Face answer generated (${relevantChunks.length} relevant chunks)`);
+    const processingTime = Date.now() - startTime;
+    console.log(`✅ [${requestId}] Hugging Face answer generated in ${processingTime}ms (${relevantChunks.length} relevant chunks)`);
+    console.log(`📝 [${requestId}] Answer preview: ${answer.substring(0, 100)}...`);
 
-    res.json({
+    const response = {
       success: true,
       question: question,
       answer: answer,
@@ -2571,11 +2666,16 @@ app.post('/api/answer-question', async (req, res) => {
         relevance: chunk.relevance || 0.8
       })),
       conversational: true,
-      provider: 'huggingface'
-    });
+      provider: 'huggingface',
+      processingTime: processingTime
+    };
+
+    console.log(`🚀 [${requestId}] Sending successful response`);
+    res.json(response);
 
   } catch (error) {
-    console.error('❌ Hugging Face Q&A error:', error);
+    console.error(`❌ [${requestId}] Hugging Face Q&A error:`, error);
+    console.error(`🔍 [${requestId}] Error stack:`, error.stack);
 
     // Ensure question is available (fallback from req.body)
     const questionForResponse = question || req.body?.question || 'Unknown question';

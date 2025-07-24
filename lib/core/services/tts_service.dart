@@ -37,7 +37,7 @@ class TTSService {
       'welcome':
           'Welcome to VIAS, your DIT Prospectus Assistant. I can help you explore programs, view fees, get admissions information, or answer questions. Use voice commands or tap the buttons to get started.',
       'help':
-          'Here are the voice commands you can use: Say "explore programs" to learn about available courses. Say "view fees" to hear about tuition costs. Say "admissions info" to get admission requirements. Say "ask questions" for interactive help. You can also say "stop" to stop speaking, or "repeat" to hear something again.',
+          'Here are the voice commands you can use: Say "introduction" for institute overview. Say "list of programs" to learn about available programs. Say "academic programs" for academic courses. Say "admission regulation" for admission requirements. Say "exam regulation" for examination rules. Say "fees and financial" for fee information. Say "profile and departments" for department details. Say "ask questions" for interactive help. You can also say "stop" to stop speaking, or "repeat" to hear something again.',
       'not_understood':
           'I didn\'t understand "{command}". You can say: explore programs, view fees, admissions info, or ask questions.',
       'exploring_programs': 'Exploring Programs',
@@ -61,7 +61,7 @@ class TTSService {
       'welcome':
           'Karibu VIAS, Msaidizi wako wa Prospectus ya DIT. Naweza kukusaidia kuchunguza programu, kuona ada, kupata taarifa za kujiunga, au kujibu maswali. Tumia amri za sauti au bonyeza vitufe kuanza.',
       'help':
-          'Hizi ndizo amri za sauti unazoweza kutumia: Sema "angalia programu" kujua kozi zinazopatikana. Sema "angalia ada" kusikia kuhusu gharama za masomo. Sema "sifa za kujiunga" kupata vigezo vya kujiunga. Sema "uliza swali" kwa msaada zaidi. Unaweza pia kusema "nyamaza" kusitisha kusoma, au "rudia" kusikia tena.',
+          'Hizi ndizo amri za sauti unazoweza kutumia: Sema "utangulizi" kwa muhtasari wa taasisi. Sema "orodha ya programu" kujua programu zinazopatikana. Sema "programu za kitaaluma" kwa kozi za kitaaluma. Sema "kanuni za kujiunga" kupata vigezo vya kujiunga. Sema "kanuni za mitihani" kwa sheria za mitihani. Sema "ada na fedha" kusikia kuhusu gharama za masomo. Sema "wasifu na idara" kwa maelezo ya idara. Sema "uliza swali" kwa msaada zaidi. Unaweza pia kusema "nyamaza" kusitisha kusoma, au "rudia" kusikia tena.',
       'not_understood':
           'Sikuelewa "{command}". Unaweza kusema: angalia programu, angalia ada, sifa za kujiunga, au uliza swali.',
       'exploring_programs': 'Unachunguza Programu',

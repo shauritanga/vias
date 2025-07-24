@@ -192,9 +192,13 @@ class LanguageProvider extends ChangeNotifier {
     if (isSwahili) {
       return [
         'Msaada - Kupata msaada',
-        'Muhtasari - Kupata muhtasari wa prospektasi',
-        'Mipango - Kujua mipango yanayopatikana',
-        'Ada - Kujua ada za masomo',
+        'Utangulizi - Muhtasari wa taasisi',
+        'Orodha ya programu - Kujua programu zinazopatikana',
+        'Programu za kitaaluma - Kujua kozi za kitaaluma',
+        'Kanuni za kujiunga - Vigezo vya kujiunga',
+        'Kanuni za mitihani - Sheria za mitihani',
+        'Ada na fedha - Gharama za masomo',
+        'Wasifu na idara - Maelezo ya idara',
         'Uliza swali - Kuingia katika hali ya maswali',
         'Rudia - Kurudia jibu la mwisho',
         'Nyamaza - Kusitisha kusoma',
@@ -205,9 +209,13 @@ class LanguageProvider extends ChangeNotifier {
     } else {
       return [
         'Help - Get assistance',
-        'Summarize - Get prospectus summary',
-        'Programs - Learn about available programs',
-        'Fees - Get fee information',
+        'Introduction - Institute overview',
+        'List of programs - Learn about available programs',
+        'Academic programs - Learn about academic courses',
+        'Admission regulation - Admission requirements',
+        'Exam regulation - Examination rules',
+        'Fees and financial - Fee information',
+        'Profile and departments - Department details',
         'Ask questions - Enter Q&A mode',
         'Repeat - Repeat last response',
         'Stop - Stop speaking',

@@ -43,3 +43,31 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Server-specific files
+local-server/node_modules/
+local-server/.env
+local-server/.env.local
+local-server/npm-debug.log*
+local-server/yarn-debug.log*
+local-server/yarn-error.log*
+local-server/uploads/
+local-server/pdf_text.txt
+local-server/prospectus_chunk.txt
+local-server/tmp/
+local-server/temp/
+
+# Environment files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Dependencies
+node_modules/
+
+# Test files
+test_*.dart
+debug_*.dart
+check_*.dart

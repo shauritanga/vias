@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../core/services/tts_service.dart';
 import '../../core/services/speech_service.dart';
 import '../../core/services/content_management_service.dart';
+import '../../core/services/text_file_service.dart';
 import '../../shared/providers/language_provider.dart';
 import '../../shared/widgets/language_indicator.dart';
 
@@ -277,6 +278,26 @@ class _VoiceFirstHomeState extends State<VoiceFirstHome>
       } else {
         await _handleUnknownCommand(actualInput);
       }
+    } else if (command.contains('introduction') ||
+        command.contains('utangulizi')) {
+      await _handleTextFileCommand('introduction');
+    } else if ((command.contains('academic') && command.contains('program')) ||
+        (command.contains('programu') && command.contains('kitaaluma'))) {
+      await _handleTextFileCommand('academic programs');
+    } else if ((command.contains('admission') &&
+            command.contains('regulation')) ||
+        (command.contains('kanuni') && command.contains('kujiunga'))) {
+      await _handleTextFileCommand('admission regulation');
+    } else if ((command.contains('exam') && command.contains('regulation')) ||
+        (command.contains('kanuni') && command.contains('mitihani'))) {
+      await _handleTextFileCommand('exam regulation');
+    } else if ((command.contains('fees') && command.contains('financial')) ||
+        (command.contains('ada') && command.contains('fedha'))) {
+      await _handleTextFileCommand('fees and financial');
+    } else if ((command.contains('profile') &&
+            command.contains('department')) ||
+        (command.contains('wasifu') && command.contains('idara'))) {
+      await _handleTextFileCommand('profile and departments');
     } else if (command.contains('help') ||
         command.contains('what can you do')) {
       await _handleHelp();
@@ -284,8 +305,11 @@ class _VoiceFirstHomeState extends State<VoiceFirstHome>
       await _handleSummarize();
     } else if (command.contains('question') || command.contains('ask')) {
       await _handleEnterQAMode();
-    } else if (command.contains('program') || command.contains('course')) {
-      await _handlePrograms();
+    } else if ((command.contains('list') && command.contains('program')) ||
+        (command.contains('orodha') && command.contains('programu')) ||
+        command.contains('programs') ||
+        command.contains('course')) {
+      await _handleTextFileCommand('list of programs');
     } else if (command.contains('fee') ||
         command.contains('cost') ||
         command.contains('price')) {
@@ -507,6 +531,49 @@ class _VoiceFirstHomeState extends State<VoiceFirstHome>
     await _ttsService.speak(helpMessage);
   }
 
+  Future<void> _handleTextFileCommand(String commandType) async {
+    _updateStatus('Reading $commandType...');
+
+    try {
+      if (kDebugMode) print('📖 Reading text file for: $commandType');
+
+      await _ttsService.speak('Reading $commandType information. Please wait.');
+
+      // Get content from text file based on command
+      String content;
+      try {
+        content = await TextFileService.getContentByCommand(commandType);
+      } catch (e) {
+        if (kDebugMode) print('❌ Error reading text file: $e');
+        content =
+            'I apologize, but the $commandType information is currently unavailable. Please contact the relevant office for more details.';
+      }
+
+      // Limit content length for voice output (first 1000 characters)
+      String voiceContent = content;
+      if (content.length > 1000) {
+        voiceContent =
+            '${content.substring(0, 1000)}... For complete information, please refer to the full document.';
+      }
+
+      _lastResponse = voiceContent;
+      await _ttsService.speak(voiceContent);
+      _updateStatus('$commandType information provided');
+
+      if (kDebugMode) {
+        print('✅ Successfully provided $commandType information');
+        print('📏 Content length: ${content.length} characters');
+        print('📏 Voice content length: ${voiceContent.length} characters');
+      }
+    } catch (e) {
+      final errorMessage =
+          'Sorry, I encountered an error while reading the $commandType information. Please try again.';
+      await _ttsService.speak(errorMessage);
+      _updateStatus('Error reading $commandType');
+      if (kDebugMode) print('❌ Error in _handleTextFileCommand: $e');
+    }
+  }
+
   Future<void> _handleSummarize() async {
     _updateStatus('Generating summary...');
 
@@ -592,31 +659,6 @@ class _VoiceFirstHomeState extends State<VoiceFirstHome>
     }
   }
 
-  Future<void> _handlePrograms() async {
-    _updateStatus('Loading programs...');
-
-    // Log programs command to backend for tracking
-    try {
-      await QnAService.logCommand('programs');
-    } catch (e) {
-      if (kDebugMode) print('⚠️ Failed to log programs command: $e');
-    }
-
-    const programsInfo = '''
-Available programs at the university:
-
-Bachelor of Computer Science - 4 years, focuses on programming and software development
-Bachelor of Information Technology - 4 years, focuses on IT infrastructure and networks
-Diploma in Computer Studies - 2 years, foundation computing course
-
-You can ask specific questions like "What are the requirements for computer science?" for more details.
-''';
-
-    _lastResponse = programsInfo;
-    await _ttsService.speak(programsInfo);
-    _updateStatus('Programs information provided');
-  }
-
   Future<void> _handleFees() async {
     _updateStatus('Loading fees...');
 
@@ -630,8 +672,8 @@ You can ask specific questions like "What are the requirements for computer scie
     const feesInfo = '''
 University fee structure:
 
-Bachelor programs: 120,000 Kenya Shillings per year
-Diploma programs: 80,000 Kenya Shillings per year
+Bachelor programs: 120,000 Tanzania Shillings per year
+Diploma programs: 80,000 Tanzania Shillings per year
 
 Payment is split: 60% first semester, 40% second semester
 Payment methods: Bank transfer, M-Pesa, or cash at campus

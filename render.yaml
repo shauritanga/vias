@@ -1,0 +1,41 @@
+services:
+  - type: web
+    name: vias-qa-server
+    env: node
+    plan: free
+    buildCommand: cd local-server && npm install
+    startCommand: cd local-server && npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: HUGGING_FACE_API_KEY
+        sync: false  # This will be set manually in Render dashboard
+    healthCheckPath: /
+    autoDeploy: true
+    branch: main
+    rootDir: .
+    
+    # Resource limits for free tier
+    disk:
+      name: vias-disk
+      mountPath: /tmp
+      sizeGB: 1
+    
+    # Environment-specific settings
+    scaling:
+      minInstances: 1
+      maxInstances: 1
+    
+    # Headers for CORS
+    headers:
+      - path: /*
+        name: Access-Control-Allow-Origin
+        value: "*"
+      - path: /*
+        name: Access-Control-Allow-Methods
+        value: "GET, POST, PUT, DELETE, OPTIONS"
+      - path: /*
+        name: Access-Control-Allow-Headers
+        value: "Content-Type, Authorization"
