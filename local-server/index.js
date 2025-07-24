@@ -465,38 +465,107 @@ function processPageBasedChunking(text, filename, totalPages) {
   const pages = text.split('\f').filter(page => page.trim().length > 100);
 
   if (pages.length === 0) {
-    // If no form feeds, split by estimated page size
-    const avgCharsPerPage = Math.floor(text.length / totalPages);
-    const chunkSize = Math.max(avgCharsPerPage, 1500);
+    // If no form feeds, force chunking by size
+    const maxChunkSize = 1500; // Smaller chunks for better Q&A
 
-    for (let i = 0; i < text.length; i += chunkSize) {
-      const chunk = text.substring(i, i + chunkSize);
-      if (chunk.trim().length > 100) {
+    console.log(`📄 No page breaks found, forcing chunking by ${maxChunkSize} characters`);
+
+    // Split by paragraphs first to maintain context
+    const paragraphs = text.split(/\n\s*\n/).filter(p => p.trim().length > 50);
+
+    if (paragraphs.length > 1) {
+      // Use paragraph-based chunking
+      let currentChunk = '';
+      let chunkIndex = 1;
+
+      for (const paragraph of paragraphs) {
+        if (currentChunk.length + paragraph.length > maxChunkSize && currentChunk.length > 0) {
+          // Save current chunk
+          chunks.push({
+            id: `${filename}_chunk_${chunkIndex}`,
+            page: Math.ceil((chunkIndex / chunks.length) * totalPages) || 1,
+            text: currentChunk.trim(),
+            status: 'approved',
+            tag: detectContentTag(currentChunk),
+            timestamp: new Date().toISOString(),
+            filename: filename,
+          });
+
+          currentChunk = paragraph + '\n\n';
+          chunkIndex++;
+        } else {
+          currentChunk += paragraph + '\n\n';
+        }
+      }
+
+      // Add final chunk
+      if (currentChunk.trim().length > 100) {
         chunks.push({
-          id: `${filename}_page_${Math.floor(i / chunkSize) + 1}`,
-          page: Math.floor(i / chunkSize) + 1,
-          text: chunk.trim(),
+          id: `${filename}_chunk_${chunkIndex}`,
+          page: Math.ceil((chunkIndex / chunks.length) * totalPages) || 1,
+          text: currentChunk.trim(),
           status: 'approved',
-          tag: detectContentTag(chunk),
+          tag: detectContentTag(currentChunk),
           timestamp: new Date().toISOString(),
           filename: filename,
         });
       }
+    } else {
+      // Force split by character count as last resort
+      for (let i = 0; i < text.length; i += maxChunkSize) {
+        const chunk = text.substring(i, i + maxChunkSize);
+        if (chunk.trim().length > 100) {
+          chunks.push({
+            id: `${filename}_forced_${Math.floor(i / maxChunkSize) + 1}`,
+            page: Math.floor(i / maxChunkSize) + 1,
+            text: chunk.trim(),
+            status: 'approved',
+            tag: detectContentTag(chunk),
+            timestamp: new Date().toISOString(),
+            filename: filename,
+          });
+        }
+      }
     }
   } else {
+    // Process actual pages, but split large ones
     pages.forEach((page, index) => {
-      chunks.push({
-        id: `${filename}_page_${index + 1}`,
-        page: index + 1,
-        text: page.trim(),
-        status: 'approved',
-        tag: detectContentTag(page),
-        timestamp: new Date().toISOString(),
-        filename: filename,
-      });
+      if (page.length > 2000) {
+        // Split large pages into smaller chunks
+        const pageChunks = [];
+        for (let i = 0; i < page.length; i += 1500) {
+          const chunk = page.substring(i, i + 1500);
+          if (chunk.trim().length > 100) {
+            pageChunks.push(chunk.trim());
+          }
+        }
+
+        pageChunks.forEach((chunk, chunkIndex) => {
+          chunks.push({
+            id: `${filename}_page_${index + 1}_chunk_${chunkIndex + 1}`,
+            page: index + 1,
+            text: chunk,
+            status: 'approved',
+            tag: detectContentTag(chunk),
+            timestamp: new Date().toISOString(),
+            filename: filename,
+          });
+        });
+      } else {
+        chunks.push({
+          id: `${filename}_page_${index + 1}`,
+          page: index + 1,
+          text: page.trim(),
+          status: 'approved',
+          tag: detectContentTag(page),
+          timestamp: new Date().toISOString(),
+          filename: filename,
+        });
+      }
     });
   }
 
+  console.log(`✅ Page-based chunking created ${chunks.length} chunks`);
   return chunks;
 }
 
@@ -573,7 +642,18 @@ function calculateRelevanceScore(chunk) {
 async function callHuggingFaceAPI(model, inputs, parameters = {}) {
   try {
     console.log(`🤗 Calling Hugging Face API: ${model}`);
-    console.log(`🔑 Using API key: ${HUGGING_FACE_API_KEY.substring(0, 10)}...`);
+
+    // Try with API key first, fallback to free inference if 401
+    let headers = {
+      'Content-Type': 'application/json'
+    };
+
+    if (HUGGING_FACE_API_KEY && HUGGING_FACE_API_KEY !== 'hf_YOUR_NEW_TOKEN_HERE') {
+      console.log(`🔑 Using API key: ${HUGGING_FACE_API_KEY.substring(0, 10)}...`);
+      headers['Authorization'] = `Bearer ${HUGGING_FACE_API_KEY}`;
+    } else {
+      console.log(`🆓 Using free inference (no API key)`);
+    }
 
     const response = await axios.post(
       `${HF_API_URL}/${model}`,
@@ -582,10 +662,7 @@ async function callHuggingFaceAPI(model, inputs, parameters = {}) {
         parameters: parameters
       },
       {
-        headers: {
-          'Authorization': `Bearer ${HUGGING_FACE_API_KEY}`,
-          'Content-Type': 'application/json'
-        },
+        headers: headers,
         timeout: 30000 // 30 second timeout
       }
     );
@@ -600,7 +677,31 @@ async function callHuggingFaceAPI(model, inputs, parameters = {}) {
     console.error('- Message:', error.message);
 
     if (error.response?.status === 401) {
-      console.error('🔑 Authentication failed - check your Hugging Face API key');
+      console.error('🔑 Authentication failed - trying fallback without API key');
+
+      // Try again without API key for free inference
+      if (HUGGING_FACE_API_KEY && HUGGING_FACE_API_KEY !== 'hf_YOUR_NEW_TOKEN_HERE') {
+        console.log('🆓 Retrying with free inference...');
+        try {
+          const fallbackResponse = await axios.post(
+            `${HF_API_URL}/${model}`,
+            {
+              inputs: inputs,
+              parameters: parameters
+            },
+            {
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              timeout: 30000
+            }
+          );
+          console.log('✅ Fallback successful');
+          return fallbackResponse.data;
+        } catch (fallbackError) {
+          console.error('❌ Fallback also failed:', fallbackError.message);
+        }
+      }
     }
 
     throw error;
@@ -1405,6 +1506,30 @@ app.post('/api/process-pdf', upload.single('pdf'), async (req, res) => {
       !isJunkContent(chunk.text) // Filter out headers, footers, page numbers
     );
 
+    // Safety check: If we still have very large chunks, force split them
+    const finalChunks = [];
+    for (const chunk of chunks) {
+      if (chunk.text.length > 3000) {
+        console.log(`⚠️ Large chunk detected (${chunk.text.length} chars), splitting...`);
+
+        // Split large chunk into smaller ones
+        const maxSize = 1500;
+        for (let i = 0; i < chunk.text.length; i += maxSize) {
+          const subChunk = chunk.text.substring(i, i + maxSize);
+          if (subChunk.trim().length > 100) {
+            finalChunks.push({
+              ...chunk,
+              id: `${chunk.id}_split_${Math.floor(i / maxSize) + 1}`,
+              text: subChunk.trim(),
+            });
+          }
+        }
+      } else {
+        finalChunks.push(chunk);
+      }
+    }
+    chunks = finalChunks;
+
     // Limit chunks for performance (keep most relevant ones)
     if (chunks.length > 200) {
       console.log(`📊 Too many chunks (${chunks.length}), selecting most relevant...`);
@@ -1841,13 +1966,117 @@ ${summary}
 🤗 **Powered by**: Hugging Face BART model (free AI service)`;
 }
 
+// Extract admission information from processed content
+app.post('/api/admission-info', async (req, res) => {
+  console.log(`🌐 POST /api/admission-info - Request received`);
+
+  try {
+    if (processedContent.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'No document processed',
+        message: 'Please upload a PDF document first to extract admission information.'
+      });
+    }
+
+    console.log(`📋 Extracting admission info from ${processedContent.length} chunks`);
+
+    // Keywords to identify admission-related content
+    const admissionKeywords = [
+      'admission', 'admissions', 'entry', 'requirements', 'requirement',
+      'application', 'apply', 'eligibility', 'qualify', 'qualification',
+      'entrance', 'enroll', 'enrollment', 'registration', 'register',
+      'fee', 'fees', 'cost', 'tuition', 'payment', 'scholarship',
+      'deadline', 'date', 'semester', 'academic year', 'intake'
+    ];
+
+    // Find relevant chunks
+    const relevantChunks = processedContent.filter(chunk => {
+      const text = chunk.content.toLowerCase();
+      return admissionKeywords.some(keyword => text.includes(keyword));
+    });
+
+    if (relevantChunks.length === 0) {
+      return res.json({
+        success: true,
+        admissionInfo: {
+          message: 'No specific admission information found in the document.',
+          generalInfo: 'Please contact the institution directly for admission details.'
+        }
+      });
+    }
+
+    console.log(`📄 Found ${relevantChunks.length} relevant chunks for admission info`);
+
+    // Extract structured admission information
+    const admissionInfo = {
+      requirements: [],
+      fees: [],
+      deadlines: [],
+      procedures: [],
+      contact: [],
+      general: []
+    };
+
+    relevantChunks.forEach(chunk => {
+      const text = chunk.content.toLowerCase();
+      const originalText = chunk.content;
+
+      // Categorize content
+      if (text.includes('requirement') || text.includes('eligibility') || text.includes('qualify')) {
+        admissionInfo.requirements.push(originalText);
+      } else if (text.includes('fee') || text.includes('cost') || text.includes('tuition') || text.includes('payment')) {
+        admissionInfo.fees.push(originalText);
+      } else if (text.includes('deadline') || text.includes('date') || text.includes('semester') || text.includes('intake')) {
+        admissionInfo.deadlines.push(originalText);
+      } else if (text.includes('application') || text.includes('apply') || text.includes('registration') || text.includes('register')) {
+        admissionInfo.procedures.push(originalText);
+      } else if (text.includes('contact') || text.includes('phone') || text.includes('email') || text.includes('address')) {
+        admissionInfo.contact.push(originalText);
+      } else {
+        admissionInfo.general.push(originalText);
+      }
+    });
+
+    // Clean up empty arrays and limit content length
+    Object.keys(admissionInfo).forEach(key => {
+      admissionInfo[key] = admissionInfo[key]
+        .slice(0, 5) // Limit to 5 items per category
+        .map(text => text.length > 300 ? text.substring(0, 300) + '...' : text);
+
+      if (admissionInfo[key].length === 0) {
+        delete admissionInfo[key];
+      }
+    });
+
+    console.log(`✅ Admission info extracted successfully`);
+    console.log(`📊 Categories found: ${Object.keys(admissionInfo).join(', ')}`);
+
+    res.json({
+      success: true,
+      admissionInfo: admissionInfo,
+      totalChunks: relevantChunks.length,
+      message: 'Admission information extracted successfully'
+    });
+
+  } catch (error) {
+    console.error('❌ Admission info extraction error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to extract admission information',
+      message: error.message
+    });
+  }
+});
+
 
 app.listen(port, '0.0.0.0', () => {
   console.log(`🚀 VIAS Server running on port ${port}`);
   console.log(`🤗 AI Provider: HUGGING FACE (FREE)`);
-  console.log(`� Language Support: English & Swahili`);
+  console.log(`🌐 Language Support: English & Swahili`);
   console.log(`📄 Upload PDFs to: /api/process-pdf`);
   console.log(`❓ Ask questions at: /api/answer-question`);
   console.log(`📋 Summarize PDFs at: /api/summarize-pdf`);
+  console.log(`🎓 Get admission info: /api/admission-info`);
   console.log(`🌐 Language API: /api/language`);
 });
