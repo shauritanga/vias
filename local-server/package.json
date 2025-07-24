@@ -1,13 +1,15 @@
 {
-  "name": "vias-local-server",
-  "version": "1.0.0",
-  "description": "Local server for VIAS app - no cloud required",
+  "name": "vias-qa-server",
+  "version": "2.0.0",
+  "description": "Enhanced Q&A server for VIAS app with Hugging Face AI",
   "main": "index.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "nodemon server.js",
+    "start": "node index.js",
+    "dev": "nodemon index.js",
     "build": "npm install",
-    "install-deps": "npm install"
+    "install-deps": "npm install",
+    "test": "node --check index.js",
+    "health": "curl -f http://localhost:${PORT:-10000}/ || exit 1"
   },
   "engines": {
     "node": ">=18.0.0",
@@ -25,7 +27,13 @@
   "devDependencies": {
     "nodemon": "^3.0.1"
   },
-  "engines": {
-    "node": ">=16"
-  }
+  "keywords": [
+    "ai",
+    "qa",
+    "hugging-face",
+    "education",
+    "voice-assistant"
+  ],
+  "author": "VIAS Team",
+  "license": "MIT"
 }
