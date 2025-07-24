@@ -145,7 +145,11 @@ class VercelBackendService {
         if (kDebugMode) {
           print('✅ Question answered successfully');
           print('❓ Question: ${data['question']}');
-          print('💡 Answer: ${data['answer'].substring(0, 100)}...');
+          final answer = data['answer']?.toString() ?? 'No answer';
+          final answerPreview = answer.length > 100
+              ? answer.substring(0, 100)
+              : answer;
+          print('💡 Answer: $answerPreview...');
           print('📚 Relevant chunks: ${data['relevantChunks']}');
         }
         return data;

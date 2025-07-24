@@ -562,7 +562,7 @@ class QnAService {
         history: conversationHistory,
       );
 
-      final answer = response['answer'] ?? 'No answer found.';
+      final answer = response['answer']?.toString() ?? 'No answer found.';
 
       // Add to conversation history for context
       _conversationHistory.add({'question': question, 'answer': answer});

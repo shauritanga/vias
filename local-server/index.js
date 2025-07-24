@@ -2522,7 +2522,10 @@ app.post('/api/answer-question', async (req, res) => {
   try {
     const { question, history } = req.body;
     console.log(`❓ [${requestId}] Question: "${question}"`);
-    console.log(`📊 [${requestId}] Request body:`, { question: question?.substring(0, 100), historyLength: history?.length || 0 });
+    console.log(`📊 [${requestId}] Request body:`, {
+      question: question ? question.substring(0, 100) : 'No question',
+      historyLength: history?.length || 0
+    });
     console.log(`🔄 [${requestId}] Starting processing...`);
 
     if (!question) {
@@ -2672,7 +2675,7 @@ app.get('/api/content', (req, res) => {
       id: chunk.id,
       page: chunk.page,
       filename: chunk.filename,
-      textPreview: chunk.text.substring(0, 100) + '...',
+      textPreview: chunk.text ? chunk.text.substring(0, 100) + '...' : 'No text',
       timestamp: chunk.timestamp
     }))
   });
@@ -3009,7 +3012,7 @@ app.post('/api/admission-info', async (req, res) => {
     Object.keys(admissionInfo).forEach(key => {
       admissionInfo[key] = admissionInfo[key]
         .slice(0, 5) // Limit to 5 items per category
-        .map(text => text.length > 300 ? text.substring(0, 300) + '...' : text);
+        .map(text => text && text.length > 300 ? text.substring(0, 300) + '...' : text || '');
 
       if (admissionInfo[key].length === 0) {
         delete admissionInfo[key];

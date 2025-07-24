@@ -585,10 +585,10 @@ class _VoiceFirstHomeState extends State<VoiceFirstHome>
 
       final summary = await QnAService.summarizeFullPDF();
       if (kDebugMode) {
-        final preview = summary.length > 100
-            ? summary.substring(0, 100)
-            : summary;
-        print('✅ Summary received: $preview...');
+        final safePreview = summary.isNotEmpty
+            ? (summary.length > 100 ? summary.substring(0, 100) : summary)
+            : 'Empty summary';
+        print('✅ Summary received: $safePreview...');
       }
 
       _lastResponse = summary;
@@ -622,8 +622,10 @@ class _VoiceFirstHomeState extends State<VoiceFirstHome>
 
       final answer = await QnAService.askQuestion(question);
       if (kDebugMode) {
-        final preview = answer.length > 100 ? answer.substring(0, 100) : answer;
-        print('✅ Answer received: $preview');
+        final safePreview = answer.isNotEmpty
+            ? (answer.length > 100 ? answer.substring(0, 100) : answer)
+            : 'Empty answer';
+        print('✅ Answer received: $safePreview');
         print('📏 Answer length: ${answer.length} characters');
       }
 
